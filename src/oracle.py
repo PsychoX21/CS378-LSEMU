@@ -4,7 +4,7 @@
 import os
 import time
 import socket
-from common import unpack_connect, pack_link_state
+from common.protocol import unpack_connect, pack_link_state
 
 graph_dict = {}
 N = 0
@@ -26,7 +26,7 @@ def parse(file_path):
                     graph_dict[chr(neighbor + 65)].append((current_node, l))
                     neighbor += 1
                 N += 1
-
+    # print(graph_dict)
 def send_link_state(connections, node_to_ip_port):
     for node in node_to_ip_port:
         records = [(node, node_to_ip_port[node][0], node_to_ip_port[node][1], 0)]
@@ -42,6 +42,7 @@ def send_link_state(connections, node_to_ip_port):
         connections[node].sendall(pack_link_state(records))
 
 def start():
+    global modifiedOn,N
     try:
         # TODO: HANDLING MULTIPLE CONNECTIONS PROPERLY :(. IDK somethings feels wrong in this implementation, will need to wait for checking until the virtual node code is completed. Need to learn about the select syscall.
         node_to_ip_port = {}
