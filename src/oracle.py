@@ -17,23 +17,27 @@ def parse(file_path):
         for line in f:
             if line.strip() and not line.startswith('#'):
                 current_node = chr(N + 65)
-                graph_dict[current_node] = []
+                if(graph_dict.get(current_node) is None):
+                    graph_dict[current_node] = []
                 neighbor = N + 1
                 for l in line.strip().split():
+                    l = int(l)
+                    if l == -1:
+                        neighbor += 1
+                        continue
                     graph_dict[current_node].append((chr(neighbor + 65), l))
                     if graph_dict.get(chr(neighbor + 65)) is None:
                         graph_dict[chr(neighbor + 65)] = []
                     graph_dict[chr(neighbor + 65)].append((current_node, l))
                     neighbor += 1
                 N += 1
-    # print(graph_dict)
+    print(graph_dict)
+
 def send_link_state(connections, node_to_ip_port):
     for node in node_to_ip_port:
         records = [(node, node_to_ip_port[node][0], node_to_ip_port[node][1], 0)]
         neighbors = graph_dict[node]
         for neighbor in neighbors:
-            if neighbor[1] == -1:
-                continue
             neighbor_node = neighbor[0]
             neighbor_ip = node_to_ip_port[neighbor_node][0]
             neighbor_port = node_to_ip_port[neighbor_node][1]
@@ -44,12 +48,11 @@ def send_link_state(connections, node_to_ip_port):
 def start():
     global modifiedOn,N
     try:
-        # TODO: HANDLING MULTIPLE CONNECTIONS PROPERLY :(. IDK somethings feels wrong in this implementation, will need to wait for checking until the virtual node code is completed. Need to learn about the select syscall.
         node_to_ip_port = {}
         connections = {}
         for i in range(N):
             node = chr(i+ 65)
-            conn, addr = sock.accept()
+            conn, _ = sock.accept()
             connections[node] = conn
             received = conn.recv(1024)
             ip_str, port = unpack_connect(received)
