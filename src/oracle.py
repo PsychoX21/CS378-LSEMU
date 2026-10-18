@@ -31,6 +31,7 @@ def parse(file_path):
                     graph_dict[chr(neighbor + 65)].append((current_node, l))
                     neighbor += 1
                 N += 1
+    N += 1
     print(graph_dict)
 
 def send_link_state(connections, node_to_ip_port):
@@ -52,7 +53,8 @@ def start():
         connections = {}
         for i in range(N):
             node = chr(i+ 65)
-            conn, _ = sock.accept()
+            conn, addr = sock.accept()
+            print("Connected with address:", addr)
             connections[node] = conn
             received = conn.recv(1024)
             ip_str, port = unpack_connect(received)
