@@ -131,6 +131,10 @@ int send_LSP (int udp_socket) {
     return 0;
 }
 
+int recieve_LSP (int udp_socket) {
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 3 || argc > 4) {
         fprintf(stderr, "Usage: %s <oracle_ip> <myudp_port> [<myip>]\n", argv[0]);
@@ -198,7 +202,7 @@ int main(int argc, char *argv[]) {
     send(oracle_socket, &msg, sizeof(msg), 0);
     printf("Sent connection message to oracle: ip=%s, port=%d\n", myip, myudp_port);
     if (update_LS(oracle_socket) < 0) {
-        fprintf(stderr, "Error updating Link State\n");
+        fprintf(stderr, "Error creating Link State\n");
         close(udp_socket);
         close(oracle_socket);
         return 1;
@@ -207,6 +211,36 @@ int main(int argc, char *argv[]) {
     time_t last_update_time = time(NULL);
 
     while(1) {
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(udp_socket, &readfds);
+        FD_SET(oracle_socket, &readfds);
+
+        if (select(FD_SETSIZE, &readfds, NULL, NULL, NULL) < 0) {
+            fprintf(stderr, "Select Error\n");
+            close(udp_socket);
+            close(oracle_socket);
+            return 1;
+        }
+
+        if (FD_ISSET(udp_socket, &readfds)) {
+            if (recieve_LSP(udp_socket) < 0) {
+                fprintf(stderr, "Error receiving LSP\n");
+                close(udp_socket);
+                close(oracle_socket);
+                return 1;
+            }
+        }
+
+        if (FD_ISSET(oracle_socket, &readfds)) {
+            if (update_LS(oracle_socket) < 0) {
+                fprintf(stderr, "Error updating Link State\n");
+                close(udp_socket);
+                close(oracle_socket);
+                return 1;
+            }
+        }
+
         time_t current_time = time(NULL);
         if (current_time - last_update_time >= PERIODIC_UPDATE_INTERVAL) {
             if (send_LSP(udp_socket) < 0) {
@@ -218,5 +252,9 @@ int main(int argc, char *argv[]) {
             last_update_time = current_time;
         }
     }
+
+    close(udp_socket);
+    close(oracle_socket);
+    return 0;
 }
 
