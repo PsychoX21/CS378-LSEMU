@@ -165,6 +165,12 @@ int receive_LSP (int udp_socket) {
     uint32_t seq = ntohl(header.seq);
     uint16_t num_neighbors = ntohs(header.num_neighbors);
 
+    int expected_size = sizeof(header) + num_neighbors * sizeof(struct lsp_neighbor);
+    if (bytes_received < expected_size) {
+        fprintf(stderr, "Incomplete LSP received: expected %d bytes, got %d bytes\n", expected_size, bytes_received);
+        return -1;
+    }
+
     if (origin - 'A' >= MAX_NODES || origin - 'A' < 0) {
         fprintf(stderr, "Invalid origin node: %c\n", origin);
         return -1;
