@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -13,6 +14,8 @@ struct neighbour {
     int32_t cost;
 };
 
+char me;
+int num_neighbours = 0;
 struct neighbour neighbours[MAX_NODES];
 int graph[MAX_NODES][MAX_NODES];
 
@@ -50,11 +53,36 @@ void update_LS (int tcp_socket) {
         uint16_t port = ntohs(record.port);
         int32_t cost = ntohl(record.cost);
 
+        if (cost == 0 && me != node) {
+            printf("Error: Multiple nodes with cost 0 detected. Current node: %c, New node: %c\n", me, node);
+            continue;
+        }
+
+        if (cost == 0) {
+            me = node;
+        } else {
+            neighbours[num_neighbours].node = node;
+            neighbours[num_neighbours].ip = ip;
+            neighbours[num_neighbours].port = port;
+            neighbours[num_neighbours].cost = cost;
+            num_neighbours++;
+        }
+
         printf("Received link state record: node=%c, ip=%u, port=%u, cost=%d\n", node, ip, port, cost);
+    }
+
+    for (int i = 0; i < num_neighbours; i++) {
+        graph[me - 'A'][neighbours[i].node - 'A'] = neighbours[i].cost;
+        graph[neighbours[i].node - 'A'][me - 'A'] = neighbours[i].cost;
     }
 }
 
 int main(int argc, char *argv[]) {
+    if (argc < 3 || argc > 4) {
+        fprintf(stderr, "Usage: %s <oracle_ip> <myudp_port> [<myip>]\n", argv[0]);
+        return 1;
+    }
+
     char* oracle_ip = argv[1];
     int oracle_port = ORACLE_PORT;
     int myudp_port = atoi(argv[2]);
@@ -104,6 +132,7 @@ int main(int argc, char *argv[]) {
     msg.ip = inet_addr(myip);
     msg.port = htons(myudp_port);
     send(oracle_socket, &msg, sizeof(msg), 0);
+    printf("Sent connection message to oracle: ip=%s, port=%d\n", myip, myudp_port);
     update_LS(oracle_socket);
 }
 
