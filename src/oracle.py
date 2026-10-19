@@ -6,36 +6,61 @@ import time
 import socket
 from common.protocol import unpack_connect, pack_link_state
 
+BUFFER_SIZE = 2048
 graph_dict = {}
 N = 0
 
+def changed(L1, L2):
+    if len(L1) != len(L2):
+        return True
+    for i in range(len(L1)):
+        if L1[i]!=L2[i]:
+            return True
+    return False
+
 def parse(file_path):
     global graph_dict, N
-    graph_dict = {}
-    N = 0
+    sendNodes = set()
+    new_graph_dict = {}
+    new_N = 0
     with open(file_path, 'r') as f:
         for line in f:
             if line.strip() and not line.startswith('#'):
-                current_node = chr(N + 65)
-                if(graph_dict.get(current_node) is None):
-                    graph_dict[current_node] = []
-                neighbor = N + 1
+                current_node = chr(new_N + 65)
+                if(new_graph_dict.get(current_node) is None):
+                    new_graph_dict[current_node] = []
+                neighbor = new_N + 1
                 for l in line.strip().split():
                     l = int(l)
                     if l == -1:
                         neighbor += 1
                         continue
-                    graph_dict[current_node].append((chr(neighbor + 65), l))
-                    if graph_dict.get(chr(neighbor + 65)) is None:
-                        graph_dict[chr(neighbor + 65)] = []
-                    graph_dict[chr(neighbor + 65)].append((current_node, l))
+                    new_graph_dict[current_node].append((chr(neighbor + 65), l))
+                    if new_graph_dict.get(chr(neighbor + 65)) is None:
+                        new_graph_dict[chr(neighbor + 65)] = []
+                    new_graph_dict[chr(neighbor + 65)].append((current_node, l))
                     neighbor += 1
-                N += 1
-    N += 1
-    print(graph_dict)
+                new_graph_dict[current_node].sort()
+                if graph_dict.get(current_node) is None:
+                    sendNodes.add(current_node)
+                elif changed(new_graph_dict[current_node], graph_dict[current_node]):
+                    sendNodes.add(current_node)
+                new_N += 1
 
-def send_link_state(connections, node_to_ip_port):
-    for node in node_to_ip_port:
+    current_node = chr(new_N + 65)
+    new_graph_dict[current_node].sort()
+    if graph_dict.get(current_node) is None:
+        sendNodes.add(current_node)
+    elif changed(new_graph_dict[current_node], graph_dict[current_node]):
+        sendNodes.add(current_node) 
+    N = new_N + 1
+    graph_dict = new_graph_dict
+    # print(sendNodes)
+    # print(graph_dict)
+    return sendNodes
+
+def send_link_state(connections, node_to_ip_port, sendNodes):
+    for node in sendNodes:
         records = [(node, node_to_ip_port[node][0], node_to_ip_port[node][1], 0)]
         neighbors = graph_dict[node]
         for neighbor in neighbors:
@@ -47,20 +72,24 @@ def send_link_state(connections, node_to_ip_port):
         connections[node].sendall(pack_link_state(records))
 
 def start():
-    global modifiedOn,N
+    global modifiedOn,N, sendNodes
     try:
         node_to_ip_port = {}
         connections = {}
         for i in range(N):
             node = chr(i+ 65)
+            # print("This prove that", end = " ", flush = True)
             conn, addr = sock.accept()
+            # print("accept is Blocking")
             print("Connected with address:", addr)
             connections[node] = conn
-            received = conn.recv(1024)
+            # print("This proves that", end = " ", flush = True)
+            received = conn.recv(BUFFER_SIZE)
+            # print("recv is Blocking")
             ip_str, port = unpack_connect(received)
             node_to_ip_port[node] = (ip_str, port)
 
-        send_link_state(connections, node_to_ip_port)
+        send_link_state(connections, node_to_ip_port, sendNodes)
 
         while (True):
             time.sleep(0.5)
@@ -68,8 +97,8 @@ def start():
             if modified != modifiedOn:
                 modifiedOn = modified
                 # print(f"{file_path} has been modified")
-                parse(file_path)
-                send_link_state(connections, node_to_ip_port)
+                sendNodes = parse(file_path)
+                send_link_state(connections, node_to_ip_port, sendNodes)
 
     except Exception as e:
         print(e)
@@ -79,7 +108,7 @@ port = 5000
 
 file_path = "config.txt"
 modifiedOn = os.path.getmtime(file_path)
-parse(file_path)
+sendNodes = parse(file_path)
 sock = socket.create_server((address, port))
 start()
 
