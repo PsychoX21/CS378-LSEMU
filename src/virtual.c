@@ -26,7 +26,8 @@ int graph[MAX_NODES][MAX_NODES];
 uint32_t seqmax[MAX_NODES] = {0};
 
 int send_LSP(int udp_socket);
-int recieve_LSP(int udp_socket);
+int receive_LSP(int udp_socket);
+int forward_LSP(int udp_socket, char *buffer, int length, struct sockaddr_in sender_addr);
 
 int read_full(int sockfd, void *buf, size_t len) {
     size_t bytes_read = 0;
@@ -47,7 +48,7 @@ int read_full(int sockfd, void *buf, size_t len) {
 int update_LS (int tcp_socket, int udp_socket) {
     struct link_state_header header;
     if (read_full(tcp_socket, &header, sizeof(header)) != sizeof(header)) {
-        fprintf(stderr, "Read Header Error\n");
+        fprintf(stderr, "Read LS Header Error\n");
         return -1;
     }
     num_neighbours = 0;
@@ -55,7 +56,7 @@ int update_LS (int tcp_socket, int udp_socket) {
     for (int i = 0; i < num_records; i++) {
         struct link_state_record record;
         if (read_full(tcp_socket, &record, sizeof(record)) != sizeof(record)) {
-            fprintf(stderr, "Read Record Error\n");
+            fprintf(stderr, "Read LS Record Error\n");
             return -1;
         }
         char node = record.node;
@@ -142,13 +143,93 @@ int send_LSP (int udp_socket) {
     return 0;
 }
 
-int recieve_LSP (int udp_socket) {
-    struct lsp_header header;
+int receive_LSP (int udp_socket) {
     char buffer[BUF_SIZE];
-    read_full(udp_socket, &header, sizeof(header));
+    memset(buffer, 0, BUF_SIZE);
+    int offset = 0;
+    
+    struct sockaddr_in sender_addr;
+    socklen_t sender_addr_len = sizeof(sender_addr);
+    int bytes_received = recvfrom(udp_socket, buffer, BUF_SIZE, 0, (struct sockaddr*)&sender_addr, &sender_addr_len);
+
+    struct lsp_header header;
+
+    if (bytes_received < sizeof(header)) {
+        fprintf(stderr, "Receive LSP Error\n");
+        return -1;
+    }
+
+    memcpy(&header, buffer + offset, sizeof(header));
+    offset += sizeof(header);
+    char origin = header.origin;
     uint32_t seq = ntohl(header.seq);
-    printf("Receiving LSP...\n");
-    printf("LSP sequence number: %u\n", seq);
+    uint16_t num_neighbors = ntohs(header.num_neighbors);
+
+    if (origin - 'A' >= MAX_NODES || origin - 'A' < 0) {
+        fprintf(stderr, "Invalid origin node: %c\n", origin);
+        return -1;
+    }
+
+    if (origin - 'A' + 1 > total_nodes) {
+        total_nodes = origin - 'A' + 1;
+    }
+
+    if (seq <= seqmax[origin - 'A']) return 0;
+    seqmax[origin - 'A'] = seq;
+
+    for (int i = 0; i < MAX_NODES; i++) {
+        graph[origin - 'A'][i] = (i == origin - 'A') ? 0 : -1;
+        graph[i][origin - 'A'] = (i == origin - 'A') ? 0 : -1;
+    }
+
+    for (int i = 0; i < num_neighbors; i++) {
+        struct lsp_neighbor neighbor;
+        memcpy(&neighbor, buffer + offset, sizeof(neighbor));
+        offset += sizeof(neighbor);
+        if (read_full(udp_socket, &neighbor, sizeof(neighbor)) != sizeof(neighbor)) {
+            fprintf(stderr, "Read LSP Neighbor Error\n");
+            return -1;
+        }
+        char neighbor_node = neighbor.neighbor;
+        int32_t cost = ntohl(neighbor.cost);
+
+        if (neighbor_node - 'A' >= MAX_NODES || neighbor_node - 'A' < 0) {
+            fprintf(stderr, "Invalid neighbor node: %c\n", neighbor_node);
+            continue;
+        }
+
+        graph[origin - 'A'][neighbor_node - 'A'] = cost;
+        graph[neighbor_node - 'A'][origin - 'A'] = cost;
+
+        if (neighbor_node - 'A' + 1 > total_nodes) {
+            total_nodes = neighbor_node - 'A' + 1;
+        }
+    }
+
+    printf("LSP sequence number from %c: %u\n", origin, seq);
+    if (forward_LSP(udp_socket, buffer, offset, sender_addr) < 0) {
+        fprintf(stderr, "Error forwarding LSP\n");
+        return -1;
+    }
+    return 0;
+}
+
+int forward_LSP(int udp_socket, char *buffer, int length, struct sockaddr_in sender_addr) {
+    for (int i = 0; i < num_neighbours; i++) {
+        if (sender_addr.sin_addr.s_addr == htonl(neighbours[i].ip) && sender_addr.sin_port == htons(neighbours[i].port)) {
+            continue;
+        }
+        struct sockaddr_in neighbor_addr;
+        memset(&neighbor_addr, 0, sizeof(neighbor_addr));
+        neighbor_addr.sin_family = AF_INET;
+        neighbor_addr.sin_addr.s_addr = htonl(neighbours[i].ip);
+        neighbor_addr.sin_port = htons(neighbours[i].port);
+
+        if (sendto(udp_socket, buffer, length, 0, (struct sockaddr*)&neighbor_addr, sizeof(neighbor_addr)) < 0) {
+            fprintf(stderr, "Forward LSP Error\n");
+            return -1;
+        }
+    }
     return 0;
 }
 
@@ -247,7 +328,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (FD_ISSET(udp_socket, &readfds)) {
-            if (recieve_LSP(udp_socket) < 0) {
+            if (receive_LSP(udp_socket) < 0) {
                 fprintf(stderr, "Error receiving LSP\n");
                 close(udp_socket);
                 close(oracle_socket);
