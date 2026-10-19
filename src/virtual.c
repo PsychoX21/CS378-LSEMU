@@ -19,11 +19,14 @@ struct neighbour {
 
 char me;
 int num_neighbours = 0;
-int total_nodes = 0;
+int total_nodes = 1;
 struct neighbour neighbours[MAX_NODES];
 int graph[MAX_NODES][MAX_NODES];
 
 uint32_t seqmax[MAX_NODES] = {0};
+
+int send_LSP(int udp_socket);
+int recieve_LSP(int udp_socket);
 
 int read_full(int sockfd, void *buf, size_t len) {
     size_t bytes_read = 0;
@@ -41,7 +44,7 @@ int read_full(int sockfd, void *buf, size_t len) {
     return bytes_read;
 }
 
-int update_LS (int tcp_socket) {
+int update_LS (int tcp_socket, int udp_socket) {
     struct link_state_header header;
     if (read_full(tcp_socket, &header, sizeof(header)) != sizeof(header)) {
         fprintf(stderr, "Read Header Error\n");
@@ -59,6 +62,10 @@ int update_LS (int tcp_socket) {
         uint32_t ip = ntohl(record.ip);
         uint16_t port = ntohs(record.port);
         int32_t cost = ntohl(record.cost);
+
+        if (node - 'A' + 1 > total_nodes) {
+            total_nodes = node - 'A' + 1;
+        }
 
         if (cost == 0 && me != 0 && me != node) {
             printf("Error: Multiple nodes with cost 0 detected. Current node: %c, New node: %c\n", me, node);
@@ -91,6 +98,10 @@ int update_LS (int tcp_socket) {
         printf("Neighbour %c: IP=%s, Port=%u, Cost=%d\n", neighbours[i].node, inet_ntoa((struct in_addr){htonl(neighbours[i].ip)}), neighbours[i].port, neighbours[i].cost);
     }
 
+    if (send_LSP(udp_socket) < 0) {
+        fprintf(stderr, "Error sending LSP\n");
+        return -1;
+    }
     return 0;
 }
 
@@ -132,6 +143,12 @@ int send_LSP (int udp_socket) {
 }
 
 int recieve_LSP (int udp_socket) {
+    struct lsp_header header;
+    char buffer[BUF_SIZE];
+    read_full(udp_socket, &header, sizeof(header));
+    uint32_t seq = ntohl(header.seq);
+    printf("Receiving LSP...\n");
+    printf("LSP sequence number: %u\n", seq);
     return 0;
 }
 
@@ -140,6 +157,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage: %s <oracle_ip> <myudp_port> [<myip>]\n", argv[0]);
         return 1;
     }
+
+    setvbuf(stdout, NULL, _IONBF, 0); // Disable buffering for stdout
 
     char* oracle_ip = argv[1];
     int oracle_port = ORACLE_PORT;
@@ -201,7 +220,7 @@ int main(int argc, char *argv[]) {
 
     send(oracle_socket, &msg, sizeof(msg), 0);
     printf("Sent connection message to oracle: ip=%s, port=%d\n", myip, myudp_port);
-    if (update_LS(oracle_socket) < 0) {
+    if (update_LS(oracle_socket, udp_socket) < 0) {
         fprintf(stderr, "Error creating Link State\n");
         close(udp_socket);
         close(oracle_socket);
@@ -216,7 +235,11 @@ int main(int argc, char *argv[]) {
         FD_SET(udp_socket, &readfds);
         FD_SET(oracle_socket, &readfds);
 
-        if (select(FD_SETSIZE, &readfds, NULL, NULL, NULL) < 0) {
+        struct timeval timeout;
+        timeout.tv_sec = 1;
+        timeout.tv_usec = 0;
+
+        if (select(FD_SETSIZE, &readfds, NULL, NULL, &timeout) < 0) {
             fprintf(stderr, "Select Error\n");
             close(udp_socket);
             close(oracle_socket);
@@ -233,7 +256,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (FD_ISSET(oracle_socket, &readfds)) {
-            if (update_LS(oracle_socket) < 0) {
+            if (update_LS(oracle_socket, udp_socket) < 0) {
                 fprintf(stderr, "Error updating Link State\n");
                 close(udp_socket);
                 close(oracle_socket);
@@ -243,11 +266,23 @@ int main(int argc, char *argv[]) {
 
         time_t current_time = time(NULL);
         if (current_time - last_update_time >= PERIODIC_UPDATE_INTERVAL) {
+            printf("Periodic update: Sending LSP...\n");
             if (send_LSP(udp_socket) < 0) {
                 fprintf(stderr, "Error sending LSP\n");
                 close(udp_socket);
                 close(oracle_socket);
                 return 1;
+            }
+            printf("Current Network Topology:\n");
+            for (int i = 0; i < total_nodes; i++) {
+                for (int j = 0; j < total_nodes; j++) {
+                    if (graph[i][j] == -1) {
+                        printf("INF ");
+                    } else {
+                        printf("%d ", graph[i][j]);
+                    }
+                }
+                printf("\n");
             }
             last_update_time = current_time;
         }
