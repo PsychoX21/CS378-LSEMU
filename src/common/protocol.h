@@ -4,6 +4,7 @@
 #define ORACLE_PORT 5000
 #define MAX_NODES 26
 #define BUF_SIZE 2048
+#define PERIODIC_UPDATE_INTERVAL 10
 
 struct connect_msg {
     uint32_t ip;
