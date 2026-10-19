@@ -186,10 +186,6 @@ int receive_LSP (int udp_socket) {
         struct lsp_neighbor neighbor;
         memcpy(&neighbor, buffer + offset, sizeof(neighbor));
         offset += sizeof(neighbor);
-        if (read_full(udp_socket, &neighbor, sizeof(neighbor)) != sizeof(neighbor)) {
-            fprintf(stderr, "Read LSP Neighbor Error\n");
-            return -1;
-        }
         char neighbor_node = neighbor.neighbor;
         int32_t cost = ntohl(neighbor.cost);
 
@@ -300,7 +296,7 @@ int main(int argc, char *argv[]) {
     }
 
     send(oracle_socket, &msg, sizeof(msg), 0);
-    printf("Sent connection message to oracle: ip=%s, port=%d\n", myip, myudp_port);
+    printf("Sent connection message to oracle\n");
     if (update_LS(oracle_socket, udp_socket) < 0) {
         fprintf(stderr, "Error creating Link State\n");
         close(udp_socket);
