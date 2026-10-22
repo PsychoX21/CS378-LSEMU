@@ -81,6 +81,11 @@ def send_link_state(connections, node_to_ip_port, sendNodes):
             records.append((neighbor_node, neighbor_ip, neighbor_port, neighbor_cost))
         connections[node].sendall(pack_link_state(records))
 
+    print("Sent Link State to : ", end = " ")
+    for i in sorted(list(sendNodes)):
+        print(i, end = " ")
+    print()
+
 def start():
     global modifiedOn,N, sendNodes
     try:
@@ -107,7 +112,7 @@ def start():
             if modified != modifiedOn:
                 modifiedOn = modified
                 time.sleep(1)
-                # print(f"{file_path} has been modified")
+                print(f"{file_path} has been modified")
                 try:
                     sendNodes = parse(file_path)
                     send_link_state(connections, node_to_ip_port, sendNodes)
@@ -120,7 +125,7 @@ def start():
 address = "0.0.0.0"
 port = 5000
 
-file_path = "config.txt"
+file_path = "../config.txt"
 modifiedOn = os.path.getmtime(file_path)
 sendNodes = parse(file_path)
 sock = socket.create_server((address, port))
