@@ -101,7 +101,7 @@ int receive_LSP(int udp_socket)
 
     struct lsp_header header;
 
-    if (bytes_received < sizeof(header))
+    if ((long unsigned int) bytes_received < sizeof(header))
     {
         fprintf(stderr, "Receive LSP Error\n");
         return -1;
@@ -114,7 +114,7 @@ int receive_LSP(int udp_socket)
     uint16_t num_neighbors = ntohs(header.num_neighbors);
 
     int expected_size = sizeof(header) + num_neighbors * sizeof(struct lsp_neighbor);
-    if (bytes_received < expected_size)
+    if ((int) bytes_received < expected_size)
     {
         fprintf(stderr, "Incomplete LSP received: expected %d bytes, got %ld bytes\n", expected_size, bytes_received);
         return -1;
@@ -245,10 +245,11 @@ int update_LS (int tcp_socket, int udp_socket) {
     }
 
     // Print neighbours
-    printf("Node %c has %d neighbours:\n", me, num_neighbours);
+    printf("%c=0", me);
     for (int i = 0; i < num_neighbours; i++) {
-        printf("Neighbour %c: IP=%s, Port=%u, Cost=%d\n", neighbours[i].node, inet_ntoa((struct in_addr){htonl(neighbours[i].ip)}), neighbours[i].port, neighbours[i].cost);
+        printf(",%c=%d", neighbours[i].node, neighbours[i].cost);
     }
+    printf("\n");
 
     if (send_LSP(udp_socket) < 0) {
         fprintf(stderr, "Error sending LSP\n");
@@ -391,6 +392,7 @@ int main(int argc, char *argv[]) {
                 }
                 printf("\n");
             }
+            printf("\n");
             last_update_time = current_time;
         }
     }

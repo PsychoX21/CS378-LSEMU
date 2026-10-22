@@ -1,4 +1,4 @@
 bin/
+logs/
 __pycache__/
 *.o
-output*.txt
