@@ -48,6 +48,8 @@ def parse(file_path):
                 new_N += 1
 
     current_node = chr(new_N + 65)
+    if(new_graph_dict.get(current_node) is None):
+        new_graph_dict[current_node] = []
     new_graph_dict[current_node].sort()
     if graph_dict.get(current_node) is None:
         sendNodes.add(current_node)
