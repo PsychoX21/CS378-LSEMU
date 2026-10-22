@@ -4,11 +4,19 @@
 import os
 import time
 import socket
-from common.protocol import unpack_connect, pack_link_state
+from common.protocol import unpack_connect, pack_link_state, CONNECT_SIZE
 
-BUFFER_SIZE = 2048
 graph_dict = {}
 N = 0
+
+def recv_full(conn, n):
+    buf = b""
+    while len(buf) < n:
+        result = conn.recv(n - len(buf))
+        if not result:
+            raise ConnectionError("Didn't receive the full message.")
+        buf += result
+    return buf
 
 def changed(L1, L2):
     if len(L1) != len(L2):
@@ -25,7 +33,7 @@ def parse(file_path):
     new_N = 0
     with open(file_path, 'r') as f:
         for line in f:
-            if line.strip() and not line.startswith('#'):
+            if line.strip() and not line.strip().startswith('#'):
                 current_node = chr(new_N + 65)
                 if(new_graph_dict.get(current_node) is None):
                     new_graph_dict[current_node] = []
@@ -86,7 +94,7 @@ def start():
             print("Connected with address:", addr)
             connections[node] = conn
             # print("This proves that", end = " ", flush = True)
-            received = conn.recv(BUFFER_SIZE)
+            received = recv_full(conn, CONNECT_SIZE)
             # print("recv is Blocking")
             ip_str, port = unpack_connect(received)
             node_to_ip_port[node] = (ip_str, port)
@@ -98,9 +106,13 @@ def start():
             modified = os.path.getmtime(file_path)
             if modified != modifiedOn:
                 modifiedOn = modified
+                time.sleep(1)
                 # print(f"{file_path} has been modified")
-                sendNodes = parse(file_path)
-                send_link_state(connections, node_to_ip_port, sendNodes)
+                try:
+                    sendNodes = parse(file_path)
+                    send_link_state(connections, node_to_ip_port, sendNodes)
+                except:
+                    pass
 
     except Exception as e:
         print(e)
