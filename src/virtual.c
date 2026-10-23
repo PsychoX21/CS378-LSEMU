@@ -28,10 +28,6 @@ int graph[MAX_NODES][MAX_NODES];
 
 uint32_t seqmax[MAX_NODES] = {0};
 
-int send_LSP(int udp_socket);
-int receive_LSP(int udp_socket);
-int forward_LSP(int udp_socket, char *buffer, int length, struct sockaddr_in sender_addr);
-
 int read_full(int sockfd, void *buf, size_t len) {
     size_t bytes_read = 0;
     while (bytes_read < len) {
@@ -86,6 +82,28 @@ int send_LSP(int udp_socket)
         }
     }
 
+    return 0;
+}
+
+int forward_LSP(int udp_socket, char *buffer, int length, struct sockaddr_in sender_addr) {
+    for (int i = 0; i < num_neighbours; i++)
+    {
+        if (sender_addr.sin_addr.s_addr == htonl(neighbours[i].ip) && sender_addr.sin_port == htons(neighbours[i].port))
+        {
+            continue;
+        }
+        struct sockaddr_in neighbor_addr;
+        memset(&neighbor_addr, 0, sizeof(neighbor_addr));
+        neighbor_addr.sin_family = AF_INET;
+        neighbor_addr.sin_addr.s_addr = htonl(neighbours[i].ip);
+        neighbor_addr.sin_port = htons(neighbours[i].port);
+
+        if (sendto(udp_socket, buffer, length, 0, (struct sockaddr *)&neighbor_addr, sizeof(neighbor_addr)) < 0)
+        {
+            fprintf(stderr, "Forward LSP Error\n");
+            return -1;
+        }
+    }
     return 0;
 }
 
@@ -169,29 +187,6 @@ int receive_LSP(int udp_socket)
     {
         fprintf(stderr, "Error forwarding LSP\n");
         return -1;
-    }
-    return 0;
-}
-
-int forward_LSP(int udp_socket, char *buffer, int length, struct sockaddr_in sender_addr)
-{
-    for (int i = 0; i < num_neighbours; i++)
-    {
-        if (sender_addr.sin_addr.s_addr == htonl(neighbours[i].ip) && sender_addr.sin_port == htons(neighbours[i].port))
-        {
-            continue;
-        }
-        struct sockaddr_in neighbor_addr;
-        memset(&neighbor_addr, 0, sizeof(neighbor_addr));
-        neighbor_addr.sin_family = AF_INET;
-        neighbor_addr.sin_addr.s_addr = htonl(neighbours[i].ip);
-        neighbor_addr.sin_port = htons(neighbours[i].port);
-
-        if (sendto(udp_socket, buffer, length, 0, (struct sockaddr *)&neighbor_addr, sizeof(neighbor_addr)) < 0)
-        {
-            fprintf(stderr, "Forward LSP Error\n");
-            return -1;
-        }
     }
     return 0;
 }
@@ -370,6 +365,7 @@ int main(int argc, char *argv[]) {
                 close(oracle_socket);
                 return 1;
             }
+            last_update_time = time(NULL);
         }
 
         time_t current_time = time(NULL);
